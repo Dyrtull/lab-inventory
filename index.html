@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lab Inventory - Scan</title>
+    <!-- Import the Barcode Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         * {
             margin: 0;
@@ -112,12 +114,35 @@
             color: white;
             margin-bottom: 20px;
             width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         
         .scan-btn:hover {
             box-shadow: 0 5px 15px rgba(246, 173, 85, 0.4);
         }
+
+        /* Styles for the camera container */
+        #reader {
+            width: 100%;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            display: none; /* Hidden by default */
+            background: #000;
+        }
         
+        /* Customize the library's internal buttons */
+        #reader button {
+            background: white;
+            color: #333;
+            padding: 5px 10px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
         .message {
             padding: 15px;
             border-radius: 10px;
@@ -168,7 +193,12 @@
         
         <div id="message" class="message"></div>
         
-        <button onclick="scanBarcode()" class="scan-btn">📷 Scan Barcode</button>
+        <!-- Camera Viewfinder Area -->
+        <div id="reader"></div>
+
+        <button onclick="toggleCamera()" id="scanButton" class="scan-btn">
+            📷 Scan Barcode
+        </button>
         
         <form id="inventoryForm">
             <div class="form-group">
@@ -198,27 +228,74 @@
     </div>
 
     <script>
-        // REPLACE THIS WITH YOUR ACTUAL MAKE WEBHOOK URL
         const WEBHOOK_URL = 'https://hook.us2.make.com/ds1x59x5b9n8ngpbga3p9r7gp8uf349w';
         
-        function scanBarcode() {
-            // For now, this is a placeholder
-            // On mobile, users can use their camera app to scan QR codes
-            // which can be configured to open this page with the code in the URL
-            showMessage('Use your phone camera to scan QR codes, or enter the code manually', 'error');
+        // --- Barcode Scanner Logic ---
+        let html5QrcodeScanner = null;
+        let isScanning = false;
+
+        function toggleCamera() {
+            const readerDiv = document.getElementById('reader');
+            const scanBtn = document.getElementById('scanButton');
+
+            if (isScanning) {
+                // Stop Scanning
+                if (html5QrcodeScanner) {
+                    html5QrcodeScanner.clear().then(() => {
+                        readerDiv.style.display = 'none';
+                        scanBtn.innerHTML = '📷 Scan Barcode';
+                        scanBtn.style.background = '#f6ad55';
+                        isScanning = false;
+                    }).catch(err => {
+                        console.error("Failed to clear html5QrcodeScanner. ", err);
+                    });
+                }
+            } else {
+                // Start Scanning
+                readerDiv.style.display = 'block';
+                scanBtn.innerHTML = '❌ Stop Scanning';
+                scanBtn.style.background = '#e53e3e'; // Red color for stop
+                isScanning = true;
+
+                // Configure the scanner
+                // fps: Frames per second (lower is better for performance)
+                // qrbox: The size of the scanning box
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    "reader", 
+                    { fps: 10, qrbox: {width: 250, height: 250} },
+                    /* verbose= */ false
+                );
+
+                html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+            }
         }
-        
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // Play a beep sound (optional, but nice feedback)
+            // const audio = new Audio('beep.mp3'); audio.play();
+
+            // Fill the input
+            document.getElementById('itemId').value = decodedText;
+            
+            // Show success message
+            showMessage(`Scanned: ${decodedText}`, 'success');
+            
+            // Stop scanning automatically after success
+            toggleCamera();
+        }
+
+        function onScanFailure(error) {
+            // handle scan failure, usually better to ignore and keep scanning.
+            // console.warn(`Code scan error = ${error}`);
+        }
+        // -----------------------------
+
         async function submitForm(action) {
             const itemId = document.getElementById('itemId').value;
             const userId = document.getElementById('userId').value;
             
             if (!itemId || !userId) {
                 showMessage('Please fill in all fields', 'error');
-                return;
-            }
-            
-            if (WEBHOOK_URL === 'YOUR_WEBHOOK_URL_HERE') {
-                showMessage('Please update the WEBHOOK_URL in the code', 'error');
                 return;
             }
             
@@ -248,7 +325,7 @@
                     
                     // Clear form
                     document.getElementById('itemId').value = '';
-                    document.getElementById('userId').value = '';
+                    // We keep User ID as they might scan multiple things
                 } else {
                     showMessage('❌ Error processing request. Please try again.', 'error');
                 }
