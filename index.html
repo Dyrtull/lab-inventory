@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lab Inventory - Scan</title>
-    <!-- Import the Barcode Scanner Library -->
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- Import Quagga2 Barcode Scanner Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1/dist/quagga.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -132,15 +132,22 @@
             overflow: hidden;
             display: none; /* Hidden by default */
             background: #000;
+            position: relative; /* Quagga canvas positioning */
+        }
+
+        /* Helper to ensure video fits container */
+        #reader video {
+            width: 100%;
+            height: auto;
+            display: block;
         }
         
-        /* Customize the library's internal buttons */
-        #reader button {
-            background: white;
-            color: #333;
-            padding: 5px 10px;
-            margin-top: 10px;
-            font-size: 14px;
+        #reader canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
 
         .message {
@@ -229,9 +236,8 @@
 
     <script>
         const WEBHOOK_URL = 'https://hook.us2.make.com/ds1x59x5b9n8ngpbga3p9r7gp8uf349w';
-        
-        // --- Barcode Scanner Logic ---
-        let html5QrcodeScanner = null;
+
+        // --- Barcode Scanner Logic with Quagga ---
         let isScanning = false;
 
         function toggleCamera() {
@@ -240,64 +246,74 @@
 
             if (isScanning) {
                 // Stop Scanning
-                if (html5QrcodeScanner) {
-                    html5QrcodeScanner.clear().then(() => {
-                        readerDiv.style.display = 'none';
-                        scanBtn.innerHTML = '📷 Scan Barcode';
-                        scanBtn.style.background = '#f6ad55';
-                        isScanning = false;
-                    }).catch(err => {
-                        console.error("Failed to clear html5QrcodeScanner. ", err);
-                    });
-                }
+                Quagga.stop();
+                readerDiv.style.display = 'none';
+                scanBtn.innerHTML = '📷 Scan Barcode';
+                scanBtn.style.background = '#f6ad55';
+                isScanning = false;
             } else {
                 // Start Scanning
                 readerDiv.style.display = 'block';
                 scanBtn.innerHTML = '❌ Stop Scanning';
-                scanBtn.style.background = '#e53e3e'; // Red color for stop
+                scanBtn.style.background = '#e53e3e';
                 isScanning = true;
 
-                // Configure the scanner
-                // fps: Frames per second (lower is better for performance)
-                // qrbox: The size of the scanning box
-                html5QrcodeScanner = new Html5QrcodeScanner(
-                    "reader", 
-                    { fps: 10, qrbox: {width: 250, height: 250} },
-                    /* verbose= */ false
-                );
+                Quagga.init({
+                    inputStream: {
+                        name: "Live",
+                        type: "LiveStream",
+                        target: document.querySelector('#reader'),
+                        constraints: {
+                            width: 640,
+                            height: 480,
+                            facingMode: "environment" // Use back camera
+                        },
+                    },
+                    decoder: {
+                        readers: [
+                            "code_128_reader",
+                            "ean_reader",
+                            "ean_8_reader",
+                            "code_39_reader",
+                            "upc_reader",
+                            "upc_e_reader"
+                        ]
+                    },
+                }, function(err) {
+                    if (err) {
+                        console.error(err);
+                        showMessage('❌ Camera access denied or not available', 'error');
+                        isScanning = false;
+                        readerDiv.style.display = 'none';
+                        scanBtn.innerHTML = '📷 Scan Barcode';
+                        scanBtn.style.background = '#f6ad55';
+                        return;
+                    }
+                    console.log("Initialization finished. Ready to start");
+                    Quagga.start();
+                });
 
-                html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+                Quagga.onDetected(onBarcodeDetected);
             }
         }
 
-        function onScanSuccess(decodedText, decodedResult) {
-            // DEBUG: Log exactly what was scanned
-            console.log('Raw scanned value:', JSON.stringify(decodedText));
-            console.log('Length:', decodedText.length);
-
-            // Clean the scanned text - remove whitespace, line breaks, etc.
-            const cleanedText = decodedText.trim().replace(/[\r\n\t]/g, '');
-
-            // Fill the input with cleaned value
+        function onBarcodeDetected(result) {
+            const code = result.codeResult.code;
+            
+            // Clean and fill the input
+            const cleanedText = code.trim();
             document.getElementById('itemId').value = cleanedText;
-
+            
             // Show success message
-            showMessage(`Scanned: ${cleanedText}`, 'success');
-
-            // Stop scanning automatically after success
+            showMessage(`✅ Scanned: ${cleanedText}`, 'success');
+            
+            // Stop scanning
             toggleCamera();
         }
 
-        function onScanFailure(error) {
-            // handle scan failure, usually better to ignore and keep scanning.
-            // console.warn(`Code scan error = ${error}`);
-        }
-        // -----------------------------
-
         async function submitForm(action) {
-            // Clean input before sending: remove spaces, invisible chars, and uppercase it
-            const itemId = document.getElementById('itemId').value.trim().toUpperCase();
-            const userId = document.getElementById('userId').value;
+            const itemId = document.getElementById('itemId').value.trim();
+            const userId = document.getElementById('userId').value.trim();
             
             if (!itemId || !userId) {
                 showMessage('Please fill in all fields', 'error');
@@ -330,7 +346,7 @@
                     
                     // Clear form
                     document.getElementById('itemId').value = '';
-                    // We keep User ID as they might scan multiple things
+                    // Keep userId for convenience
                 } else {
                     showMessage('❌ Error processing request. Please try again.', 'error');
                 }
