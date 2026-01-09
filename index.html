@@ -271,15 +271,19 @@
         }
 
         function onScanSuccess(decodedText, decodedResult) {
-            // Play a beep sound (optional, but nice feedback)
-            // const audio = new Audio('beep.mp3'); audio.play();
+            // DEBUG: Log exactly what was scanned
+            console.log('Raw scanned value:', JSON.stringify(decodedText));
+            console.log('Length:', decodedText.length);
 
-            // Fill the input
-            document.getElementById('itemId').value = decodedText;
-            
+            // Clean the scanned text - remove whitespace, line breaks, etc.
+            const cleanedText = decodedText.trim().replace(/[\r\n\t]/g, '');
+
+            // Fill the input with cleaned value
+            document.getElementById('itemId').value = cleanedText;
+
             // Show success message
-            showMessage(`Scanned: ${decodedText}`, 'success');
-            
+            showMessage(`Scanned: ${cleanedText}`, 'success');
+
             // Stop scanning automatically after success
             toggleCamera();
         }
@@ -291,7 +295,8 @@
         // -----------------------------
 
         async function submitForm(action) {
-            const itemId = document.getElementById('itemId').value;
+            // Clean input before sending: remove spaces, invisible chars, and uppercase it
+            const itemId = document.getElementById('itemId').value.trim().toUpperCase();
             const userId = document.getElementById('userId').value;
             
             if (!itemId || !userId) {
